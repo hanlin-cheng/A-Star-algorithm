@@ -1,8 +1,12 @@
-## A* algorithm [![Build Status](https://travis-ci.org/daancode/a-star.svg?branch=master)](https://travis-ci.org/da-an/SHA-1)
+# A* algorithm
 A* search algorithm written in C++ programming language.
  - requires compiler support for C++11
 
-#### Usage example
+## algorithm theory
+
+[算法原理介绍](https://github.com/hanlin-cheng/slam-study-note/blob/master/slam_theory/%E8%B7%AF%E5%BE%84%E8%A7%84%E5%88%92%E4%B9%8BA-star%E7%AE%97%E6%B3%95.md)
+
+## Usage example
 ```cpp
 #include <iostream>
 #include "AStar.hpp"
@@ -51,3 +55,4 @@ int main() {
 }
 ```
 
+> 冰泉冷涩弦凝绝，凝绝不通声暂歇。别有幽愁暗恨生，此时无声胜有声。
