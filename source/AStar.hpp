@@ -1,72 +1,51 @@
+#pragma once
 /*
-    Copyright (c) 2015, Damian Barczynski <daan.net@wp.eu>
-    Following tool is licensed under the terms and conditions of the ISC license.
-    For more information visit https://opensource.org/licenses/ISC.
+//A*算法对象类
 */
-#ifndef __ASTAR_HPP_8F637DB91972F6C878D41D63F7E7214F__
-#define __ASTAR_HPP_8F637DB91972F6C878D41D63F7E7214F__
-
 #include <vector>
-#include <functional>
-#include <set>
+#include <list>
 
-namespace AStar
+const int kCost1 = 10; //直移一格消耗
+const int kCost2 = 14; //斜移一格消耗
+
+struct Point
 {
-    struct Vec2i
+    int x, y; //点坐标，这里为了方便按照C++的数组来计算，x代表横排，y代表竖列
+    int F, G, H; //F=G+H
+    Point *parent; //parent的坐标，这里没有用指针，从而简化代码
+    Point(int _x, int _y) :x(_x), y(_y), F(0), G(0), H(0), parent(NULL)  //变量初始化
     {
-        int x, y;
+    }
+};
 
-        bool operator == (const Vec2i& coordinates_);
-    };
-
-    using uint = unsigned int;
-    using HeuristicFunction = std::function<uint(Vec2i, Vec2i)>;
-    using CoordinateList = std::vector<Vec2i>;
-
-    struct Node
-    {
-        uint G, H;
-        Vec2i coordinates;
-        Node *parent;
-
-        Node(Vec2i coord_, Node *parent_ = nullptr);
-        uint getScore();
-    };
-
-    using NodeSet = std::vector<Node*>;
-
-    class Generator
-    {
-        bool detectCollision(Vec2i coordinates_);
-        Node* findNodeOnList(NodeSet& nodes_, Vec2i coordinates_);
-        void releaseNodes(NodeSet& nodes_);
-
-    public:
-        Generator();
-        void setWorldSize(Vec2i worldSize_);
-        void setDiagonalMovement(bool enable_);
-        void setHeuristic(HeuristicFunction heuristic_);
-        CoordinateList findPath(Vec2i source_, Vec2i target_);
-        void addCollision(Vec2i coordinates_);
-        void removeCollision(Vec2i coordinates_);
-        void clearCollisions();
-
-    private:
-        HeuristicFunction heuristic;
-        CoordinateList direction, walls;
-        Vec2i worldSize;
-        uint directions;
-    };
-
-    class Heuristic
-    {
-        static Vec2i getDelta(Vec2i source_, Vec2i target_);
-
-    public:
-        static uint manhattan(Vec2i source_, Vec2i target_);
-        static uint euclidean(Vec2i source_, Vec2i target_);
-        static uint octagonal(Vec2i source_, Vec2i target_);
-    };
+bool InPath(const int &row, const int &col, const std::list<Point *> &path) {
+    for (const auto &p : path) {
+        if (row == p->x && col == p->y) {
+            return true;
+        }
+    }
+    return false;
 }
 
-#endif // __ASTAR_HPP_8F637DB91972F6C878D41D63F7E7214F__
+class Astar
+{
+public:
+    void InitAstar(std::vector<std::vector<int>> &_maze);
+    std::list<Point *> GetPath(Point &startPoint, Point &endPoint, bool isIgnoreCorner);
+
+private:
+    Point *findPath(Point &startPoint, Point &endPoint, bool isIgnoreCorner);
+    std::vector<Point *> getSurroundPoints(const Point *point, bool isIgnoreCorner) const;
+    bool isCanreach(const Point *point, const Point *target, bool isIgnoreCorner) const; //判断某点是否可以用于下一步判断
+    Point *isInList(const std::list<Point *> &list, const Point *point) const; //判断开启/关闭列表中是否包含某点
+    Point *getLeastFpoint(); //从开启列表中返回F值最小的节点
+    //计算FGH值
+    int calcG(Point *temp_start, Point *point);
+    int calcH(Point *point, Point *end);
+    int calcF(Point *point);
+private:
+    std::vector<std::vector<int>> maze;
+    std::list<Point *> openList;  //开启列表
+    std::list<Point *> closeList; //关闭列表
+};
+

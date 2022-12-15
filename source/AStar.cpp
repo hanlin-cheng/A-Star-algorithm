@@ -1,183 +1,150 @@
-#include "AStar.hpp"
-#include <algorithm>
 #include <math.h>
+#include "AStar.hpp"
 
-using namespace std::placeholders;
-
-bool AStar::Vec2i::operator == (const Vec2i& coordinates_)
+void Astar::InitAstar(std::vector<std::vector<int>> &_maze)
 {
-    return (x == coordinates_.x && y == coordinates_.y);
+    maze = _maze;
 }
 
-AStar::Vec2i operator + (const AStar::Vec2i& left_, const AStar::Vec2i& right_)
+//距离起点的代价
+int Astar::calcG(Point *temp_start, Point *point)
 {
-    return{ left_.x + right_.x, left_.y + right_.y };
+    int extraG = (abs(point->x - temp_start->x) + abs(point->y - temp_start->y)) == 1 ? kCost1 : kCost2;
+    int parentG = point->parent == NULL ? 0 : point->parent->G; //如果是初始节点，则其父节点是空
+    return parentG + extraG;
 }
 
-AStar::Node::Node(Vec2i coordinates_, Node *parent_)
+//距离终点的预估代价
+int Astar::calcH(Point *point, Point *end)
 {
-    parent = parent_;
-    coordinates = coordinates_;
-    G = H = 0;
+    //用简单的欧几里得距离计算H，这个H的计算是关键，还有很多算法，没深入研究^_^
+    return sqrt((double)(end->x - point->x)*(double)(end->x - point->x) + (double)(end->y - point->y)*(double)(end->y - point->y))*kCost1;
 }
 
-AStar::uint AStar::Node::getScore()
+//节点的综合优先级
+int Astar::calcF(Point *point)
 {
-    return G + H;
+    return point->G + point->H;
 }
 
-AStar::Generator::Generator()
+Point *Astar::getLeastFpoint()
 {
-    setDiagonalMovement(false);
-    setHeuristic(&Heuristic::manhattan);
-    direction = {
-        { 0, 1 }, { 1, 0 }, { 0, -1 }, { -1, 0 },
-        { -1, -1 }, { 1, 1 }, { -1, 1 }, { 1, -1 }
-    };
-}
-
-void AStar::Generator::setWorldSize(Vec2i worldSize_)
-{
-    worldSize = worldSize_;
-}
-
-void AStar::Generator::setDiagonalMovement(bool enable_)
-{
-    directions = (enable_ ? 8 : 4);
-}
-
-void AStar::Generator::setHeuristic(HeuristicFunction heuristic_)
-{
-    heuristic = std::bind(heuristic_, _1, _2);
-}
-
-void AStar::Generator::addCollision(Vec2i coordinates_)
-{
-    walls.push_back(coordinates_);
-}
-
-void AStar::Generator::removeCollision(Vec2i coordinates_)
-{
-    auto it = std::find(walls.begin(), walls.end(), coordinates_);
-    if (it != walls.end()) {
-        walls.erase(it);
+    if (!openList.empty())
+    {
+        auto resPoint = openList.front();
+        for (auto &point : openList)
+            if (point->F < resPoint->F)
+                resPoint = point;
+        return resPoint;
     }
+    return NULL;
 }
 
-void AStar::Generator::clearCollisions()
+Point *Astar::findPath(Point &startPoint, Point &endPoint, bool isIgnoreCorner)
 {
-    walls.clear();
-}
+    openList.push_back(new Point(startPoint.x, startPoint.y)); //置入起点,拷贝开辟一个节点，内外隔离
+    while (!openList.empty())
+    {
+        auto curPoint = getLeastFpoint(); //找到F值最小的点
+        openList.remove(curPoint); //从开启列表中删除
+        closeList.push_back(curPoint); //放到关闭列表
+        //1,找到当前周围八个格中可以通过的格子
+        auto surroundPoints = getSurroundPoints(curPoint, isIgnoreCorner);
+        for (auto &target : surroundPoints)
+        {
+            //2,对某一个格子，如果它不在开启列表中，加入到开启列表，设置当前格为其父节点，计算F G H
+            if (!isInList(openList, target))
+            {
+                target->parent = curPoint;
 
-AStar::CoordinateList AStar::Generator::findPath(Vec2i source_, Vec2i target_)
-{
-    Node *current = nullptr;
-    NodeSet openSet, closedSet;
-    openSet.reserve(100);
-    closedSet.reserve(100);
-    openSet.push_back(new Node(source_));
+                target->G = calcG(curPoint, target);
+                target->H = calcH(target, &endPoint);
+                target->F = calcF(target);
 
-    while (!openSet.empty()) {
-        auto current_it = openSet.begin();
-        current = *current_it;
-
-        for (auto it = openSet.begin(); it != openSet.end(); it++) {
-            auto node = *it;
-            if (node->getScore() <= current->getScore()) {
-                current = node;
-                current_it = it;
+                openList.push_back(target);
             }
-        }
+            //3，对某一个格子，它在开启列表中，计算G值, 如果比原来的大, 就什么都不做, 否则设置它的父节点为当前点,并更新G和F
+            else
+            {
+                int tempG = calcG(curPoint, target);
+                if (tempG < target->G)
+                {
+                    target->parent = curPoint;
 
-        if (current->coordinates == target_) {
-            break;
-        }
-
-        closedSet.push_back(current);
-        openSet.erase(current_it);
-
-        for (uint i = 0; i < directions; ++i) {
-            Vec2i newCoordinates(current->coordinates + direction[i]);
-            if (detectCollision(newCoordinates) ||
-                findNodeOnList(closedSet, newCoordinates)) {
-                continue;
+                    target->G = tempG;
+                    target->F = calcF(target);
+                }
             }
-
-            uint totalCost = current->G + ((i < 4) ? 10 : 14);
-
-            Node *successor = findNodeOnList(openSet, newCoordinates);
-            if (successor == nullptr) {
-                successor = new Node(newCoordinates, current);
-                successor->G = totalCost;
-                successor->H = heuristic(successor->coordinates, target_);
-                openSet.push_back(successor);
-            }
-            else if (totalCost < successor->G) {
-                successor->parent = current;
-                successor->G = totalCost;
-            }
+            Point *resPoint = isInList(openList, &endPoint);
+            if (resPoint)
+                return resPoint; //返回列表里的节点指针，不要用原来传入的endpoint指针，因为发生了深拷贝
         }
     }
 
-    CoordinateList path;
-    while (current != nullptr) {
-        path.push_back(current->coordinates);
-        current = current->parent;
+    return NULL;
+}
+
+std::list<Point *> Astar::GetPath(Point &startPoint, Point &endPoint, bool isIgnoreCorner)
+{
+    Point *result = findPath(startPoint, endPoint, isIgnoreCorner);
+    std::list<Point *> path;
+    //返回路径，如果没找到路径，返回空链表
+    while (result)
+    {
+        path.push_front(result);
+        result = result->parent;
     }
 
-    releaseNodes(openSet);
-    releaseNodes(closedSet);
+    // 清空临时开闭列表，防止重复执行GetPath导致结果异常
+    openList.clear();
+    closeList.clear();
 
     return path;
 }
 
-AStar::Node* AStar::Generator::findNodeOnList(NodeSet& nodes_, Vec2i coordinates_)
+Point *Astar::isInList(const std::list<Point *> &list, const Point *point) const
 {
-    for (auto node : nodes_) {
-        if (node->coordinates == coordinates_) {
-            return node;
+    //判断某个节点是否在列表中，这里不能比较指针，因为每次加入列表是新开辟的节点，只能比较坐标
+    for (auto p : list)
+        if (p->x == point->x && p->y == point->y)
+            return p;
+    return NULL;
+}
+
+bool Astar::isCanreach(const Point *point, const Point *target, bool isIgnoreCorner) const
+{
+    //如果点与当前节点重合、超出地图、是障碍物、或者在关闭列表中，返回false
+    if (target->x < 0 || target->x > maze.size() - 1
+        || target->y < 0 || target->y > maze[0].size() - 1
+        || maze[target->x][target->y] == 1
+        || target->x == point->x && target->y == point->y
+        || isInList(closeList, target))
+        return false;
+    else
+    {
+        if (abs(point->x - target->x) + abs(point->y - target->y) == 1) //非斜角可以
+            return true;
+        else
+        {
+            //斜对角要判断是否绊住
+            if (maze[point->x][target->y] == 0 && maze[target->x][point->y] == 0)
+                return true;
+            else
+                return isIgnoreCorner;
         }
     }
-    return nullptr;
 }
 
-void AStar::Generator::releaseNodes(NodeSet& nodes_)
+std::vector<Point *> Astar::getSurroundPoints(const Point *point, bool isIgnoreCorner) const
 {
-    for (auto it = nodes_.begin(); it != nodes_.end();) {
-        delete *it;
-        it = nodes_.erase(it);
-    }
+    std::vector<Point *> surroundPoints;
+
+    for (int x = point->x - 1; x <= point->x + 1; x++)
+        for (int y = point->y - 1; y <= point->y + 1; y++)
+            if (isCanreach(point, new Point(x, y), isIgnoreCorner))
+                surroundPoints.push_back(new Point(x, y));
+
+    return surroundPoints;
 }
 
-bool AStar::Generator::detectCollision(Vec2i coordinates_)
-{
-    if (coordinates_.x < 0 || coordinates_.x >= worldSize.x ||
-        coordinates_.y < 0 || coordinates_.y >= worldSize.y ||
-        std::find(walls.begin(), walls.end(), coordinates_) != walls.end()) {
-        return true;
-    }
-    return false;
-}
 
-AStar::Vec2i AStar::Heuristic::getDelta(Vec2i source_, Vec2i target_)
-{
-    return{ abs(source_.x - target_.x),  abs(source_.y - target_.y) };
-}
-
-AStar::uint AStar::Heuristic::manhattan(Vec2i source_, Vec2i target_)
-{
-    auto delta = std::move(getDelta(source_, target_));
-    return static_cast<uint>(10 * (delta.x + delta.y));
-}
-
-AStar::uint AStar::Heuristic::euclidean(Vec2i source_, Vec2i target_)
-{
-    auto delta = std::move(getDelta(source_, target_));
-    return static_cast<uint>(10 * sqrt(pow(delta.x, 2) + pow(delta.y, 2)));
-}
-
-AStar::uint AStar::Heuristic::octagonal(Vec2i source_, Vec2i target_)
-{
-    auto delta = std::move(getDelta(source_, target_));
-    return 10 * (delta.x + delta.y) + (-6) * std::min(delta.x, delta.y);
-}
